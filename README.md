@@ -1,6 +1,6 @@
-# Enhanced Java Chat System — Browser Edition (No Swing)
+# Enhanced Java Chat System
 
-A **web-based, multi-user chat system** built with **Java, PHP, HTML, CSS, and JavaScript**. Users interact exclusively through a browser; there are **no Java Swing components and no desktop client required**.
+A **web-based, multi-user chat system** built with **Java, PHP, HTML, CSS, and JavaScript**. Users interact exclusively through a browser;
 
 ## Features
 
@@ -129,8 +129,6 @@ README.md                  Setup and classmates' testing guide
 .gitignore                 Ignore compiled code and chat data
 ```
 
-**No `ChatGUI.java`, `ChatClient.java`, Java Swing, or desktop GUI is needed.**
-
 ## Troubleshooting
 
 | Problem | Fix |
@@ -143,20 +141,3 @@ README.md                  Setup and classmates' testing guide
 | WebSocket 403 | Check matching secrets, exact origin, and refresh the page for a fresh ticket. |
 | Username already online | Use a different name or close the other session and allow its socket to disconnect. |
 | Port already in use | Stop the previous Java/PHP process or change the relevant port and matching settings. |
-
-## Security limitations
-
-This is a **local classroom prototype**, not a public user-account service. Users choose usernames without passwords; shared PHP sessions and signed tickets do not authenticate real identities. An offline username may be impersonated, potentially exposing stored conversations. Message history is stored in local files. Do not use it for sensitive chats or expose the demo services directly to the public internet. Hosting for remote users needs HTTPS/WSS, real sign-in, access controls, and production hardening.
-
-## Publish this update to GitHub
-
-After copying these browser-edition files into your existing repository, remove the old desktop client files from that repo and commit the changes:
-
-```powershell
-git rm src/ChatGUI.java src/ChatClient.java
-git add README.md src web .gitignore
-git commit -m "Switch Java chat project to browser-only interface"
-git push origin main
-```
-
-If `git rm` reports a file is not tracked, remove it in File Explorer and use `git add -A` instead. Keep private secrets and stored chat data out of Git.
