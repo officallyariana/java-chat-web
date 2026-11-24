@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
-/** Persists message records safely with standard-library files; no database driver required. */
 public final class HistoryStore {
     private final Path root;
     public HistoryStore(Path root) throws IOException {
@@ -52,7 +51,7 @@ public final class HistoryStore {
                     if (msg.length != 3) continue;
                     if (last.size() == count) last.removeFirst();
                     last.addLast(msg);
-                } catch (IllegalArgumentException ignored) { /* Skip damaged lines. */ }
+                } catch (IllegalArgumentException ignored) {  }
             }
         }
         return new ArrayList<>(last);

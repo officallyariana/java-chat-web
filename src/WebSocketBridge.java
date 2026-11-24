@@ -1,17 +1,14 @@
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.*;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
-/** Minimal WebSocket-to-existing-Java-TCP bridge. No external dependencies. */
 public final class WebSocketBridge {
     private static final int LIMIT = 16384;
     private final String secret, origin;
@@ -33,7 +30,6 @@ public final class WebSocketBridge {
 
     private void start() throws IOException {
         try (ServerSocket server = new ServerSocket()) {
-            // Local-only by default: put HTTPS/WSS reverse proxy in front before internet deployment.
             server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             System.out.printf("WebSocket bridge listening on localhost:%d (origin %s)%n", port, origin);
             while (true) {

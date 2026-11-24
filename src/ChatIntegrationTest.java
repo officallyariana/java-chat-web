@@ -5,7 +5,6 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Integration tests for ChatServer + Protocol + HistoryStore. Run with Java 17+. */
 public final class ChatIntegrationTest {
     private static int assertions;
     private static final int TIMEOUT_MS = 4000;
@@ -169,7 +168,6 @@ public final class ChatIntegrationTest {
             String frame = Protocol.encode("SAY", "fragmented message") + "\n";
             byte[] bytes = frame.getBytes(StandardCharsets.UTF_8);
             sender.sendRaw(Arrays.copyOfRange(bytes, 0, 5));
-            // No newline yet: the server must wait for the rest of this frame.
             sender.sendRaw(Arrays.copyOfRange(bytes, 5, bytes.length));
             check(receiver.until("ROOM_MSG")[3].equals("fragmented message"), "Split TCP frame reconstructed");
             String joined = Protocol.encode("SAY", "first together") + "\n" +

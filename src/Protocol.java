@@ -1,7 +1,6 @@
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-/** Tab-separated commands, each field base64 encoded to preserve Unicode and newlines. */
 public final class Protocol {
     private Protocol() {}
     public static String encode(String... fields) {

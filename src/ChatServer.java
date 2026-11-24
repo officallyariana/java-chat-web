@@ -59,8 +59,6 @@ public final class ChatServer implements AutoCloseable {
         }
     }
 
-    // TCP is a byte stream: read exactly one LF-terminated frame, with a hard byte cap.
-    // A frame larger than the limit is rejected BEFORE unbounded memory allocation.
     private static String readFrame(InputStream input) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         int ch;
@@ -75,7 +73,7 @@ public final class ChatServer implements AutoCloseable {
         if (ch == -1) throw new EOFException("Connection closed during a message");
         byte[] raw = bytes.toByteArray();
         int length = raw.length;
-        if (length > 0 && raw[length - 1] == '\r') length--; // tolerate CRLF
+        if (length > 0 && raw[length - 1] == '\r') length--; 
         try {
             return StandardCharsets.UTF_8.newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
@@ -93,9 +91,9 @@ public final class ChatServer implements AutoCloseable {
     private void serve(Socket socket) {
         Session session = null;
         try (socket;
-             BufferedInputStream input = new BufferedInputStream(socket.getInputStream());
-             PrintWriter output = new PrintWriter(
-                     new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true)) {
+            BufferedInputStream input = new BufferedInputStream(socket.getInputStream());
+            PrintWriter output = new PrintWriter(
+                    new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true)) {
             socket.setSoTimeout(30_000);
             String hello = readFrame(input);
             if (hello == null) return;
@@ -138,7 +136,6 @@ public final class ChatServer implements AutoCloseable {
         } catch (FrameException e) {
             log("REJECT", "Invalid frame from " + (session == null ? socket.getRemoteSocketAddress() : session.name)
                     + ": " + e.getMessage());
-            // Close this connection instead of trying to recover frame alignment.
         } catch (IOException e) {
             log("DISCONNECT", (session == null ? "Unregistered connection" : session.name) + ": " + e.getClass().getSimpleName());
         } catch (RuntimeException e) {
@@ -177,7 +174,6 @@ public final class ChatServer implements AutoCloseable {
                 log("ROOM", user.name + " joined " + room);
             }
             case "SAY" -> {
-                // Existing clients: SAY,text. Optional new format: SAY,id,text.
                 boolean withId = c.length == 3;
                 String id = withId ? c[1] : "";
                 String message = withId ? c[2] : c.length == 2 ? c[1] : "";
@@ -199,7 +195,6 @@ public final class ChatServer implements AutoCloseable {
                 }
             }
             case "DM" -> {
-                // Existing clients: DM,target,text. Optional: DM,id,target,text.
                 boolean withId = c.length == 4;
                 String id = withId ? c[1] : "";
                 String targetName = withId ? c[2] : c.length == 3 ? c[1] : "";
@@ -271,7 +266,6 @@ public final class ChatServer implements AutoCloseable {
         for (Session s : targets) if (s != except) s.send("INFO", message);
     }
 
-    // Counts successful local socket writes; not proof that recipients displayed data.
     private int broadcast(String room, String... fields) {
         List<Session> targets;
         synchronized (this) { targets = new ArrayList<>(rooms.getOrDefault(room, Set.of())); }
