@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Console client for ChatServer. Java 17+. */
 public final class ChatClient {
     private static final int CONNECT_TIMEOUT_MS = 5_000;
     private static final int HELLO_TIMEOUT_MS = 10_000;
@@ -98,7 +97,7 @@ public final class ChatClient {
             return true;
         } catch (IllegalArgumentException e) {
             System.out.println("Message not sent: " + e.getMessage());
-            return true; // input error; connection itself remains usable
+            return true; 
         }
     }
 

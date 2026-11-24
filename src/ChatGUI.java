@@ -1,13 +1,13 @@
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
-import java.net.Socket;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
@@ -31,7 +31,6 @@ public final class ChatGUI extends JFrame {
     private volatile String username = "";
     private String room = "lobby";
     private String privateWith;
-    // GUI state is accessed on the Swing event dispatch thread.
     private int sessionVersion = 0;
     private long nextRequestId = 0;
     private final Map<String, Long> pending = new HashMap<>();
