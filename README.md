@@ -15,8 +15,8 @@ A working Java TCP chat server with **two types of client**: a browser client bu
 ## Download / clone
 
 ```powershell
- git clone https://github.com/officallyariana/java-chatSystem.git
- cd java-chatSystem
+ git clone 
+ cd java-chat-web
 ```
 
 If you downloaded this *web edition* as a ZIP, extract it and run the following commands in that folder. If you've not copied the web edition into GitHub yet, cloning the existing repository may **not** include the web folder or WebSocketBridge.java.
@@ -63,14 +63,6 @@ java -cp out ChatGUI
 ```
 
 Set host `127.0.0.1`, port `5555`, username `Charlie`. Browser and GUI users can exchange messages **through the same Java TCP server**.
-
-## Test with classmates
-
-Each classmate can independently clone/download the web edition and run the three services locally on *their own PC*. Their browser uses localhost, so no one needs your computer to be online.
-
-**In a room:** Alice and Bob each click `＋` to join `project`; send a message, and observe it in both clients. **Private messaging:** click an online username, then send a message. **History:** click **Load history**. **Concurrent communication:** use two browser windows and a Java GUI client. **Errors:** try using the same username twice; only one active connection is allowed. **Automated testing:** open a separate PowerShell terminal and run `java -cp out ChatIntegrationTest` (when the Java server has port 5555 occupied, the integration tests use their own temporary server port).
-
-The website displays an `ACK` processing round-trip time when the Java server acknowledges storage. This is **not** proof of receipt by every recipient.
 
 ## Architecture
 
@@ -132,15 +124,3 @@ Explain why TCP was chosen, why newline framing is necessary with stream sockets
 - HMAC signatures expire after five minutes and are checked with a constant-time comparison. Tickets in WebSocket URL query strings can appear in server logs. Don't publish them.
 - No end-to-end encryption or persistent user accounts. Server-side chat histories are unencrypted files under `data/` and must not be committed.
 - For a real remote deployment, use a production PHP web server with HTTPS, a WSS reverse proxy to the loopback WebSocket bridge, authenticated accounts, least-privilege processes, and stronger per-user access checks for history.
-
-## GitHub update
-
-Copy the new `web/` folder and `src/WebSocketBridge.java` into your existing GitHub repository along with the updated README and Java files. Then:
-
-```powershell
- git add README.md src web .gitignore
- git commit -m "Add PHP website and Java WebSocket chat bridge"
- git push origin main
-```
-
-Do not commit API keys, `CHAT_WEB_SECRET`, personal histories, server private keys, or generated files.
