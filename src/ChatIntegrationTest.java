@@ -8,6 +8,63 @@ import java.util.concurrent.*;
 public final class ChatIntegrationTest {
     private static int assertions;
     private static final int TIMEOUT_MS = 4000;
+    private static final long POLL_DEADLINE_MS = 5000;
+    private static final long POLL_INTERVAL_MS = 25;
+
+    public static void main(String[] args) throws Exception {
+        Path storage = Files.createTempDirectory("java-chat-tests-");
+        try (ServerSocket probe = new ServerSocket(0)) {
+            int port = probe.getLocalPort();
+            probe.close();
+            try (ChatServer server = new ChatServer(port, storage)) {
+                ExecutorService executor = Executors.newSingleThreadExecutor();
+                Future<?> active = executor.submit(() -> {
+                    try { server.start(); } catch (IOException e) { throw new UncheckedIOException(e); }
+                });
+                try {
+                    waitForServer(port);
+                    basic(port);
+                    validation(port);
+                    framing(port);
+                    concurrency(port);
+                    disconnect(port);
+                } finally {
+                    server.close();
+                    executor.shutdownNow();
+                    awaitExecutor(executor, active);
+                }
+            }
+        }
+        System.out.println("\nPASS: " + assertions + " integration assertions.");
+    }
+
+    private static void waitForServer(int port) throws Exception {
+        for (int i = 0; i < 80; i++) {
+            try (Socket ignored = new Socket("127.0.0.1", port)) { return; }
+            catch (ConnectException ignored) { Thread.sleep(25); }
+        }
+        throw new AssertionError("Server startup failed");
+    }
+
+    private static void awaitExecutor(ExecutorService executor, Future<?> active) throws InterruptedException {
+        try { active.get(3, TimeUnit.SECONDS); }
+        catch (CancellationException | ExecutionException | TimeoutException ignored) { }
+        try { executor.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+    }
+
+    private static void check(boolean condition, String name) {
+        if (!condition) throw new AssertionError("FAIL: " + name);
+        assertions++;
+        System.out.println("PASS: " + name);
+    }
+
+    private static String field(String[] event, int index, String context) {
+        if (event == null || event.length <= index) {
+            throw new AssertionError("Expected field [" + index + "] missing in " + context + ": " + Arrays.toString(event));
+        }
+        return event[index];
+    }
+
     private static final class Peer implements AutoCloseable {
         final Socket socket;
         final OutputStream raw;
@@ -32,80 +89,87 @@ public final class ChatIntegrationTest {
             if (line == null) throw new EOFException("Server closed connection");
             return Protocol.decode(line);
         }
-        String[] until(String type) throws IOException {
-            for (int i = 0; i < 200; i++) {
+        String[] until(String type) throws IOException, InterruptedException {
+            long deadline = System.currentTimeMillis() + POLL_DEADLINE_MS;
+            while (System.currentTimeMillis() < deadline) {
                 String[] event = next();
                 if (event.length > 0 && event[0].equals(type)) return event;
+                Thread.sleep(POLL_INTERVAL_MS);
             }
-            throw new AssertionError("Expected " + type + " was not received");
+            throw new AssertionError("Expected " + type + " was not received before deadline");
         }
-        String[] untilWithoutRoomLeak(String type) throws IOException {
-            for (int i = 0; i < 200; i++) {
+        String[] untilWithoutRoomLeak(String type) throws IOException, InterruptedException {
+            long deadline = System.currentTimeMillis() + POLL_DEADLINE_MS;
+            while (System.currentTimeMillis() < deadline) {
                 String[] e = next();
                 if (e.length > 0 && e[0].equals("ROOM_MSG"))
                     throw new AssertionError("Wrong-room message leaked to this client");
                 if (e.length > 0 && e[0].equals(type)) return e;
+                Thread.sleep(POLL_INTERVAL_MS);
             }
-            throw new AssertionError("Expected " + type);
+            throw new AssertionError("Expected " + type + " before deadline");
         }
-        String[] untilAck(String requestId) throws IOException {
-            for (int i = 0; i < 200; i++) {
+        String[] untilAck(String requestId) throws IOException, InterruptedException {
+            long deadline = System.currentTimeMillis() + POLL_DEADLINE_MS;
+            while (System.currentTimeMillis() < deadline) {
                 String[] event = next();
                 if (event.length >= 4 && event[0].equals("ACK") && event[1].equals(requestId)) return event;
+                Thread.sleep(POLL_INTERVAL_MS);
             }
-            throw new AssertionError("Expected ACK " + requestId);
+            throw new AssertionError("Expected ACK " + requestId + " before deadline");
         }
         @Override public void close() throws IOException { socket.close(); }
     }
-    private static void check(boolean condition, String name) {
-        if (!condition) throw new AssertionError("FAIL: " + name);
-        assertions++;
-        System.out.println("PASS: " + name);
-    }
+
     private static void awaitUserGone(Peer p, String name) throws Exception {
-        for (int i = 0; i < 40; i++) {
+        long deadline = System.currentTimeMillis() + POLL_DEADLINE_MS;
+        while (System.currentTimeMillis() < deadline) {
             p.send("USERS");
-            if (!Arrays.asList(p.until("USERS")[1].split(", ")).contains(name)) return;
-            Thread.sleep(25);
+            String[] users = p.until("USERS");
+            String list = users.length > 1 ? users[1] : "";
+            if (!Arrays.asList(list.split(", ")).contains(name)) return;
+            Thread.sleep(POLL_INTERVAL_MS);
         }
         throw new AssertionError("User remained online: " + name);
     }
+
     private static void basic(int port) throws Exception {
         try (Peer alice = new Peer(port, "Alice"); Peer bob = new Peer(port, "Bob"); Peer charlie = new Peer(port, "Charlie")) {
-            check(alice.until("WELCOME")[1].equals("Alice"), "Alice connected");
-            check(bob.until("WELCOME")[1].equals("Bob"), "Bob connected");
-            check(charlie.until("WELCOME")[1].equals("Charlie"), "Charlie connected");
+            check(field(alice.until("WELCOME"), 1, "WELCOME").equals("Alice"), "Alice connected");
+            check(field(bob.until("WELCOME"), 1, "WELCOME").equals("Bob"), "Bob connected");
+            check(field(charlie.until("WELCOME"), 1, "WELCOME").equals("Charlie"), "Charlie connected");
             try (Peer dupe = new Peer(port, "alice")) {
-                check(dupe.until("ERROR")[1].contains("already"), "Duplicate username rejected");
+                check(field(dupe.until("ERROR"), 1, "ERROR").contains("already"), "Duplicate username rejected");
             }
             alice.send("JOIN", "project");
             bob.send("JOIN", "project");
-            check(alice.until("JOINED")[1].equals("project"), "Alice joined room");
-            check(bob.until("JOINED")[1].equals("project"), "Bob joined room");
+            check(field(alice.until("JOINED"), 1, "JOINED").equals("project"), "Alice joined room");
+            check(field(bob.until("JOINED"), 1, "JOINED").equals("project"), "Bob joined room");
             alice.send("SAY", "Hello project room!");
-            check(alice.until("ROOM_MSG")[3].equals("Hello project room!"), "Room sender sees message");
-            check(bob.until("ROOM_MSG")[3].equals("Hello project room!"), "Room recipient sees message");
+            check(field(alice.until("ROOM_MSG"), 3, "ROOM_MSG").equals("Hello project room!"), "Room sender sees message");
+            check(field(bob.until("ROOM_MSG"), 3, "ROOM_MSG").equals("Hello project room!"), "Room recipient sees message");
             charlie.send("USERS");
             String[] users = charlie.untilWithoutRoomLeak("USERS");
-            check(users[1].contains("Alice") && users[1].contains("Bob"), "Online users listed");
-            check(!users[1].isEmpty(), "Room isolation: Charlie received no project chat");
+            String list = users.length > 1 ? users[1] : "";
+            check(list.contains("Alice") && list.contains("Bob"), "Online users listed");
+            check(!list.isEmpty(), "User list non-empty");
             charlie.send("ROOMS");
-            check(charlie.untilWithoutRoomLeak("ROOMS")[1].contains("project"), "Room listed");
+            check(field(charlie.untilWithoutRoomLeak("ROOMS"), 1, "ROOMS").contains("project"), "Room listed");
             alice.send("DM", "Charlie", "Only you should see this");
-            check(alice.until("DM_MSG")[3].contains("Only you"), "DM sender copy");
-            check(charlie.until("DM_MSG")[3].contains("Only you"), "DM reaches recipient");
+            check(field(alice.until("DM_MSG"), 3, "DM_MSG").contains("Only you"), "DM sender copy");
+            check(field(charlie.until("DM_MSG"), 3, "DM_MSG").contains("Only you"), "DM reaches recipient");
             bob.send("HISTORY");
             bob.until("HISTORY_START");
-            check(bob.until("HISTORY_MSG")[2].equals("Alice"), "Room history stored");
+            check(field(bob.until("HISTORY_MSG"), 2, "HISTORY_MSG").equals("Alice"), "Room history stored");
             bob.until("HISTORY_END");
             alice.send("DMHISTORY", "Charlie");
             alice.until("HISTORY_START");
-            check(alice.until("HISTORY_MSG")[2].equals("Alice"), "DM history stored");
+            check(field(alice.until("HISTORY_MSG"), 2, "HISTORY_MSG").equals("Alice"), "DM history stored");
             alice.until("HISTORY_END");
             alice.send("DM", "Nobody", "ping");
-            check(alice.until("ERROR")[1].contains("not online"), "Offline DM rejected");
+            check(field(alice.until("ERROR"), 1, "ERROR").contains("not online"), "Offline DM rejected");
             alice.send("JOIN", "!invalid");
-            check(alice.until("ERROR")[1].contains("Room names"), "Invalid room rejected");
+            check(field(alice.until("ERROR"), 1, "ERROR").contains("Room names"), "Invalid room rejected");
             alice.send("SAY", "ack-room-1", "Ack request");
             check(Arrays.equals(alice.untilAck("ack-room-1"),
                     new String[]{"ACK", "ack-room-1", "SAY", "STORED"}), "SAY acknowledgment matches ID");
@@ -114,33 +178,36 @@ public final class ChatIntegrationTest {
                     new String[]{"ACK", "ack-dm-1", "DM", "STORED"}), "DM acknowledgment matches ID");
         }
         try (Peer alice = new Peer(port, "Alice")) {
-            check(alice.until("WELCOME")[1].equals("Alice"), "Username reused after disconnect");
+            check(field(alice.until("WELCOME"), 1, "WELCOME").equals("Alice"), "Username reused after disconnect");
             alice.send("JOIN", "project");
             alice.until("JOINED");
             alice.send("HISTORY");
             alice.until("HISTORY_START");
             boolean found = false;
-            for (int i = 0; i < 40; i++) {
+            long deadline = System.currentTimeMillis() + POLL_DEADLINE_MS;
+            while (System.currentTimeMillis() < deadline) {
                 String[] e = alice.next();
                 if (e[0].equals("HISTORY_END")) break;
-                if (e[0].equals("HISTORY_MSG") && e[3].equals("Hello project room!")) found = true;
+                if (e.length > 3 && e[0].equals("HISTORY_MSG") && e[3].equals("Hello project room!")) found = true;
+                Thread.sleep(POLL_INTERVAL_MS);
             }
             check(found, "History persists after reconnect");
         }
     }
+
     private static void validation(int port) throws Exception {
         try (Peer p = new Peer(port, "Validator")) {
             p.until("WELCOME");
             p.sendRaw("not-base64!\n".getBytes(StandardCharsets.UTF_8));
-            check(p.until("ERROR")[1].contains("Malformed"), "Malformed Base64 rejected");
+            check(field(p.until("ERROR"), 1, "ERROR").contains("Malformed"), "Malformed Base64 rejected");
             p.send("USERS");
-            check(p.until("USERS")[1].contains("Validator"), "Client survives malformed command");
+            check(field(p.until("USERS"), 1, "USERS").contains("Validator"), "Client survives malformed command");
             p.send("SAY", " ");
-            check(p.until("ERROR")[1].contains("Message"), "Blank chat rejected");
+            check(field(p.until("ERROR"), 1, "ERROR").contains("Message"), "Blank chat rejected");
             p.send("SAY", "x".repeat(2001));
-            check(p.until("ERROR")[1].contains("Message"), "Oversized decoded chat rejected");
+            check(field(p.until("ERROR"), 1, "ERROR").contains("Message"), "Oversized decoded chat rejected");
             p.send("SAY", "bad id", "test");
-            check(p.until("ERROR")[1].contains("ID"), "Invalid request ID rejected");
+            check(field(p.until("ERROR"), 1, "ERROR").contains("ID"), "Invalid request ID rejected");
         }
         try (Peer p = new Peer(port, "HugeFrame")) {
             p.until("WELCOME");
@@ -152,16 +219,17 @@ public final class ChatIntegrationTest {
         }
         try (Peer p = new Peer(port, "BadUtf8")) {
             p.until("WELCOME");
-            p.sendRaw(new byte[]{(byte)0xC3, (byte)0x28, (byte)'\n'});
+            p.sendRaw(new byte[]{(byte) 0xC3, (byte) 0x28, (byte) '\n'});
             boolean closed = false;
             try { closed = p.input.readLine() == null; }
             catch (SocketException e) { closed = true; }
             check(closed, "Malformed UTF-8 frame closes connection safely");
         }
         try (Peer p = new Peer(port, "StillAlive")) {
-            check(p.until("WELCOME")[1].equals("StillAlive"), "Server survived invalid frames");
+            check(field(p.until("WELCOME"), 1, "WELCOME").equals("StillAlive"), "Server survived invalid frames");
         }
     }
+
     private static void framing(int port) throws Exception {
         try (Peer sender = new Peer(port, "Framer"); Peer receiver = new Peer(port, "Reader")) {
             sender.until("WELCOME"); receiver.until("WELCOME");
@@ -169,14 +237,15 @@ public final class ChatIntegrationTest {
             byte[] bytes = frame.getBytes(StandardCharsets.UTF_8);
             sender.sendRaw(Arrays.copyOfRange(bytes, 0, 5));
             sender.sendRaw(Arrays.copyOfRange(bytes, 5, bytes.length));
-            check(receiver.until("ROOM_MSG")[3].equals("fragmented message"), "Split TCP frame reconstructed");
+            check(field(receiver.until("ROOM_MSG"), 3, "ROOM_MSG").equals("fragmented message"), "Split TCP frame reconstructed");
             String joined = Protocol.encode("SAY", "first together") + "\n" +
                     Protocol.encode("SAY", "second together") + "\n";
             sender.sendRaw(joined.getBytes(StandardCharsets.UTF_8));
-            check(receiver.until("ROOM_MSG")[3].equals("first together"), "First coalesced frame decoded");
-            check(receiver.until("ROOM_MSG")[3].equals("second together"), "Second coalesced frame decoded");
+            check(field(receiver.until("ROOM_MSG"), 3, "ROOM_MSG").equals("first together"), "First coalesced frame decoded");
+            check(field(receiver.until("ROOM_MSG"), 3, "ROOM_MSG").equals("second together"), "Second coalesced frame decoded");
         }
     }
+
     private static void concurrency(int port) throws Exception {
         final int perSender = 25;
         try (Peer a = new Peer(port, "ConcurrentA"); Peer b = new Peer(port, "ConcurrentB"); Peer observer = new Peer(port, "Observer")) {
@@ -191,7 +260,7 @@ public final class ChatIntegrationTest {
                 Set<String> seen = new HashSet<>();
                 for (int i = 0; i < 2 * perSender; i++) {
                     String[] e = observer.until("ROOM_MSG");
-                    seen.add(e[3]);
+                    seen.add(field(e, 3, "ROOM_MSG"));
                 }
                 f1.get(10, TimeUnit.SECONDS);
                 f2.get(10, TimeUnit.SECONDS);
@@ -201,48 +270,18 @@ public final class ChatIntegrationTest {
             } finally { pool.shutdownNow(); }
         }
     }
+
     private static void disconnect(int port) throws Exception {
         try (Peer observer = new Peer(port, "Watcher")) {
             observer.until("WELCOME");
             Peer shortLived = new Peer(port, "Vanishing");
             shortLived.until("WELCOME");
-            shortLived.close(); // Unexpected socket close, without QUIT.
+            shortLived.close();
             awaitUserGone(observer, "Vanishing");
             check(true, "Abrupt disconnect removed online user");
             try (Peer again = new Peer(port, "Vanishing")) {
-                check(again.until("WELCOME")[1].equals("Vanishing"), "Username reusable after abrupt disconnect");
+                check(field(again.until("WELCOME"), 1, "WELCOME").equals("Vanishing"), "Username reusable after abrupt disconnect");
             }
         }
-    }
-    public static void main(String[] args) throws Exception {
-        Path storage = Files.createTempDirectory("java-chat-tests-");
-        try (ServerSocket probe = new ServerSocket(0)) {
-            int port = probe.getLocalPort();
-            probe.close();
-            try (ChatServer server = new ChatServer(port, storage)) {
-                ExecutorService executor = Executors.newSingleThreadExecutor();
-                Future<?> active = executor.submit(() -> { try { server.start(); } catch (IOException e) { throw new UncheckedIOException(e); } });
-                try {
-                    boolean ready = false;
-                    for (int i = 0; i < 80; i++) {
-                        try (Socket probeSocket = new Socket("127.0.0.1", port)) { ready = true; break; }
-                        catch (ConnectException e) { Thread.sleep(25); }
-                    }
-                    if (!ready) throw new AssertionError("Server startup failed");
-                    basic(port);
-                    validation(port);
-                    framing(port);
-                    concurrency(port);
-                    disconnect(port);
-                } finally {
-                    server.close();
-                    executor.shutdownNow();
-                    try { active.get(3, TimeUnit.SECONDS); }
-                    catch (CancellationException | ExecutionException | TimeoutException ignored) { }
-                    executor.awaitTermination(3, TimeUnit.SECONDS);
-                }
-            }
-        }
-        System.out.println("\nPASS: " + assertions + " integration assertions.");
     }
 }
