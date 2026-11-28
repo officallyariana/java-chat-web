@@ -1,5 +1,6 @@
 # Enhanced Java Chat System
 
+A web-based, multi-user chat system built with Java, PHP, HTML, CSS, and JavaScript. Users register and log in through a browser-based PHP frontend, then connect to a Java TCP chat server via a WebSocket bridge. No Java Swing components or desktop client is required.
 
 ## Features
 
