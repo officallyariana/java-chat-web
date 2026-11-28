@@ -1,6 +1,6 @@
 # Enhanced Java Chat System
 
-A **web-based, multi-user chat system** built with **Java, PHP, HTML, CSS, and JavaScript**. Users interact exclusively through a browser; there are **no Java Swing components and no desktop client required**.
+A **web-based, multi-user chat system** built with **Java, PHP, HTML, CSS, and JavaScript**. Users interact exclusively through a browser; no Java Swing components or desktop client are required.
 
 ## Features
 
@@ -22,7 +22,7 @@ A **web-based, multi-user chat system** built with **Java, PHP, HTML, CSS, and J
 
 ## Download
 
-Download and extract the Web Edition ZIP, then open PowerShell **in the extracted folder** (the folder containing `src` and `web`). Classmates can also download the latest browser-only repository using **Code → Download ZIP** on GitHub, or clone the repository using its HTTPS URL. Confirm that `src`, `web`, and `scalability_test.py` are present before testing. Extract the ZIP before compiling.
+Download and extract the Web Edition ZIP, then open PowerShell **in the extracted folder** (the folder containing `src` and `web`). Classmates can also download the latest browser-only repository using **Code → Download ZIP** on GitHub, or clone the repository using its HTTPS URL. Confirm that `src` and `web` are present before testing. Extract the ZIP before compiling.
 
 ## Start on Windows (three PowerShell terminals)
 
@@ -32,7 +32,7 @@ Open PowerShell in the project folder. Stop any old copies of the three services
 New-Item -ItemType Directory -Force out | Out-Null
 javac -encoding UTF-8 -d out (Get-ChildItem .\src\*.java).FullName
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed' }
-$php = (Get-Command php -CommandType Application -ErrorAction Stop).Source
+$php = (Get-Command php -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $bytes = New-Object byte[] 32
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes)
@@ -64,7 +64,7 @@ Open **http://127.0.0.1:8000** in your browser. Use that exact host (not `localh
 
 Every classmate can extract the same project and start all three services **on their own computer**. They can open two or three separate browser sessions to test the full application without connecting to your PC.
 
-For **shared local testing**, the PHP and the WebSocket bridge are intentionally limited to `127.0.0.1` (the TCP server binds all interfaces by default; keep port 5555 firewalled) and is **not accessible from other computers**. To run one shared remote website, you must first implement and deploy HTTPS, WSS, real accounts and authorization, a production PHP server, and a secure reverse proxy. **Do not open ports 5555, 8081, or 8000 directly to the internet.**
+For **shared local testing**, PHP and the WebSocket bridge are intentionally limited to `127.0.0.1` (the TCP server binds all interfaces by default; keep port 5555 firewalled) and is **not accessible from other computers**. To run one shared remote website, you must first implement and deploy HTTPS, WSS, real accounts and authorization, a production PHP server, and a secure reverse proxy. **Do not open ports 5555, 8081, or 8000 directly to the internet.**
 
 ## Run the automated tests
 
@@ -74,7 +74,7 @@ After compiling, open a fourth terminal in the same folder:
 java -cp out ChatIntegrationTest
 ```
 
-The test suite starts a temporary Java chat server on a separate port; it does not need the manually started server. In the previously prepared edition, the suite was designed to produce `PASS: 36 integration assertions.`; verify the actual result on your machine rather than assuming it passed.
+The test suite starts a temporary Java chat server on a separate port; it does not need the manually started server. The suite is designed to produce `PASS: 36 integration assertions`; verify the actual result on your machine rather than assuming it passed.
 
 ### Suggested class demo checklist
 
@@ -265,7 +265,7 @@ Use a new output folder for each repeat to preserve previous evidence. The bench
 
 - Automated WebSocket peers connect to the real bridge and TCP server on the same Windows computer. Each trial uses ten sequential messages with rotating senders in one room; expected deliveries include the sender's echo.
 - RTT measures the elapsed time from sending a command until its matching server ACK. Recipient events are counted separately. OS thread counts and resident memory (RSS, corresponding to working set on Windows) are summed across both Java processes; sampled peak is not a continuous maximum.
-- These are the project member's supplied Windows measurements. They are not measurements of PHP, browser rendering, WAN latency, sustained simultaneous message throughput, CPU utilization or NIO performance. Exact hardware and JDK version for these trials were not recorded in the supplied output.
+- These are the supplied Windows measurements from a project member. They are not measurements of PHP, browser rendering, WAN latency, sustained simultaneous message throughput, CPU utilization or NIO performance. Exact hardware and JDK version for these trials were not recorded in the supplied output.
 - For future testing, repeat each load three times, record hardware and JDK details, add sustained concurrent sends, report latency percentiles, and evaluate graceful overload rejection. A Java NIO comparison would require a separate implementation and equivalent workload.
 
 The previously supplied browser-only edition passed 36 TCP integration assertions; rerun the integration suite on the current checkout after changing the worker limit. The final Windows benchmark demonstrates WebSocket communication with 100 simultaneous connected clients under the stated test conditions.
