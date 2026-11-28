@@ -1,14 +1,17 @@
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.*;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
+/** Minimal WebSocket-to-existing-Java-TCP bridge. No external dependencies. */
 public final class WebSocketBridge {
     private static final int LIMIT = 16384;
     private final String secret, origin;
@@ -30,6 +33,7 @@ public final class WebSocketBridge {
 
     private void start() throws IOException {
         try (ServerSocket server = new ServerSocket()) {
+            // Local-only by default: put HTTPS/WSS reverse proxy in front before internet deployment.
             server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             System.out.printf("WebSocket bridge listening on localhost:%d (origin %s)%n", port, origin);
             while (true) {
@@ -41,6 +45,9 @@ public final class WebSocketBridge {
 
     private void handle(Socket ws) {
         Socket tcp = null;
+        String phase = "read HTTP headers";
+        String clientName = "unregistered";
+        long started = System.nanoTime();
         try (ws) {
             ws.setSoTimeout(10000);
             InputStream input = ws.getInputStream();
@@ -65,26 +72,34 @@ public final class WebSocketBridge {
                 if (kv.length == 2) params.put(URLDecoder.decode(kv[0], StandardCharsets.UTF_8), URLDecoder.decode(kv[1], StandardCharsets.UTF_8));
             }
             String name = params.getOrDefault("name", "");
+            if (name.matches("[A-Za-z0-9_-]{1,20}")) clientName = name;
+            phase = "validate ticket";
             String ts = params.getOrDefault("ts", "");
             String sig = params.getOrDefault("sig", "");
             if (!name.matches("[A-Za-z0-9_-]{1,20}") || !validSignature(name, ts, sig)) { reject(output, 403); return; }
 
+            phase = "connect to ChatServer";
             tcp = new Socket();
             tcp.connect(new InetSocketAddress("127.0.0.1", backendPort), 2500);
             Socket backend = tcp;
             BufferedReader serverIn = new BufferedReader(new InputStreamReader(backend.getInputStream(), StandardCharsets.UTF_8));
             PrintWriter serverOut = new PrintWriter(new OutputStreamWriter(backend.getOutputStream(), StandardCharsets.UTF_8), true);
+            phase = "send HELLO";
             serverOut.println(Protocol.encode("HELLO", name));
+            phase = "wait for ChatServer WELCOME";
             backend.setSoTimeout(5000);
             String welcome = serverIn.readLine();
             if (welcome == null) { reject(output, 503); return; }
             backend.setSoTimeout(0);
+            phase = "write HTTP 101 upgrade";
             String accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes(StandardCharsets.US_ASCII)));
             output.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
             output.flush();
             ws.setSoTimeout(0);
             Object lock = new Object();
+            phase = "send initial WebSocket frame";
             writeFrame(output, lock, 1, welcome.getBytes(StandardCharsets.UTF_8));
+            System.out.printf("[HANDSHAKE] user=%s elapsed_ms=%.3f response=%s%n", clientName, (System.nanoTime()-started)/1e6, Protocol.decode(welcome)[0]);
             if (!"WELCOME".equals(Protocol.decode(welcome)[0])) return;
             Thread fromServer = new Thread(() -> {
                 try {
@@ -99,6 +114,7 @@ public final class WebSocketBridge {
             }, "java-chat-to-web");
             fromServer.setDaemon(true);
             fromServer.start();
+            phase = "relay active";
             while (true) {
                 Frame f = readFrame(input);
                 if (f.opcode == 8) break;
@@ -113,7 +129,7 @@ public final class WebSocketBridge {
                 if (serverOut.checkError()) break;
             }
         } catch (Exception e) {
-            System.err.println("Bridge connection closed: " + e.getClass().getSimpleName());
+            System.err.printf("[BRIDGE_ERROR] user=%s phase=%s elapsed_ms=%.3f error=%s%n", clientName, phase, (System.nanoTime()-started)/1e6, e.getClass().getSimpleName());
         } finally {
             if (tcp != null) try { tcp.close(); } catch (IOException ignored) { }
         }

@@ -16,7 +16,8 @@ public final class ChatServer implements AutoCloseable {
     private static final int MAX_FRAME_BYTES = 16_384;
     private static final int SOCKET_READ_TIMEOUT_MS = 30_000;
     private static final int HISTORY_LIMIT = 20;
-    private static final int MAX_CLIENT_THREADS = Math.max(16, Runtime.getRuntime().availableProcessors() * 4);
+    private static final int MAX_CLIENT_THREADS =
+    Integer.getInteger("chat.maxClients", 128);
 
     private final int port;
     private final HistoryStore history;
